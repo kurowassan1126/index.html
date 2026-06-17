@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💳 支払い集計ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #333; }
+  header { background: #1a1a2e; color: white; padding: 20px 32px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 1.4rem; font-weight: 600; }
+  .tabs { display: flex; gap: 8px; padding: 20px 32px 0; background: white; border-bottom: 2px solid #e0e0e0; }
+  .tab { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+  .tab.active { color: #1a1a2e; border-bottom-color: #1a1a2e; font-weight: 600; }
+  .tab:hover { color: #1a1a2e; }
+  .content { padding: 32px; display: none; }
+  .content.active { display: block; }
+  .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px; }
+  .card h2 { font-size: 1.1rem; color: #555; margin-bottom: 20px; }
+  .chart-wrap { position: relative; height: 320px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .summary-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }
+  .summary-card .label { font-size: 0.85rem; color: #888; margin-bottom: 8px; }
+  .summary-card .value { font-size: 1.6rem; font-weight: 700; color: #1a1a2e; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th { background: #f0f0f0; padding: 10px 14px; text-align: right; font-weight: 600; color: #555; }
+  th:first-child { text-align: left; }
+  td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; text-align: right; }
+  td:first-child { text-align: left; font-weight: 500; }
+  tr:last-child td { border-bottom: none; font-weight: 700; background: #fafafa; }
+  .yen { color: #1a1a2e; }
+  .updated { font-size: 0.8rem; color: #aaa; text-align: right; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <span style="font-size:1.8rem">💳</span>
+  <h1>支払い集計ダッシュボード</h1>
+</header>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('a')">A｜年度別合計</button>
+  <button class="tab" onclick="showTab('b')">B｜会計区分×年度</button>
+  <button class="tab" onclick="showTab('c')">C｜種別×年度</button>
+  <button class="tab" onclick="showTab('d')">D｜月別推移</button>
+</div>
+
+<div id="tab-a" class="content active">
+  <div class="summary-grid" id="year-summary"></div>
+  <div class="card">
+    <h2>年度別 支払い合計</h2>
+    <div class="chart-wrap"><canvas id="chart-a"></canvas></div>
+  </div>
+</div>
+
+<div id="tab-b" class="content">
+  <div class="card">
+    <h2>会計区分 × 年度</h2>
+    <div class="chart-wrap"><canvas id="chart-b"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="table-wrap"><table id="table-b"></table></div>
+  </div>
+</div>
+
+<div id="tab-c" class="content">
+  <div class="card">
+    <h2>種別 × 年度</h2>
+    <div class="chart-wrap"><canvas id="chart-c"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="table-wrap"><table id="table-c"></table></div>
+  </div>
+</div>
+
+<div id="tab-d" class="content">
+  <div class="card">
+    <h2>月別推移（年度比較）</h2>
+    <div class="chart-wrap"><canvas id="chart-d"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="table-wrap"><table id="table-d"></table></div>
+  </div>
+</div>
+
+<script>
+const DATA = {"yearTotals":{"2026年":14473704,"2025年":14198777,"2024年":15098743},"kubunYearTotals":{"不明":{"2026年":14473704,"2025年":14198777,"2024年":15098743}},"shubetsuYearTotals":{"固定費":{"2026年":877867},"不明":{"2026年":13595837,"2025年":14198777,"2024年":15098743}},"monthYearTotals":{"1月":{"2024年":24083,"2025年":1895346,"2026年":1513543},"2月":{"2024年":1885758,"2025年":1380811,"2026年":1242375},"3月":{"2024年":1282948,"2025年":1387589,"2026年":1006823},"4月":{"2024年":1580363,"2025年":1015397,"2026年":1505499},"5月":{"2024年":1179714,"2025年":1298117,"2026年":1080624},"6月":{"2024年":1393026,"2025年":936091,"2026年":1772590},"7月":{"2024年":1321608,"2025年":895745,"2026年":834675},"8月":{"2024年":1284316,"2025年":955351,"2026年":1001826},"9月":{"2024年":904755,"2025年":1187826,"2026年":1251007},"10月":{"2024年":1087089,"2025年":1043799,"2026年":1014147},"11月":{"2024年":1486501,"2025年":1090310,"2026年":1154498},"12月":{"2024年":1668582,"2025年":1112395,"2026年":1096097}},"years":["2024年","2025年","2026年"],"months":["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"]};
+const COLORS = ["#4361ee","#f72585","#4cc9f0","#7209b7","#06d6a0","#ffd60a","#ef476f"];
+const fmt = (n) => n.toLocaleString("ja-JP") + "円";
+
+function showTab(id) {
+  document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", ["a","b","c","d"][i]===id));
+  document.querySelectorAll(".content").forEach(c => c.classList.remove("active"));
+  document.getElementById("tab-"+id).classList.add("active");
+}
+
+// A: 年度別合計
+const yearSummary = document.getElementById("year-summary");
+DATA.years.forEach(y => {
+  const v = DATA.yearTotals[y] ?? 0;
+  yearSummary.innerHTML += `<div class="summary-card"><div class="label">${y} 合計</div><div class="value yen">${fmt(v)}</div></div>`;
+});
+
+new Chart(document.getElementById("chart-a"), {
+  type: "bar",
+  data: {
+    labels: DATA.years,
+    datasets: [{
+      label: "支払い合計",
+      data: DATA.years.map(y => DATA.yearTotals[y] ?? 0),
+      backgroundColor: COLORS,
+      borderRadius: 6,
+    }]
+  },
+  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+    scales: { y: { ticks: { callback: v => (v/10000).toFixed(0)+"万円" } } } }
+});
+
+// B: 会計区分×年度
+const kubuns = Object.keys(DATA.kubunYearTotals);
+function makeGroupedChart(canvasId, labels, groups, groupData) {
+  return new Chart(document.getElementById(canvasId), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: groups.map((g, i) => ({
+        label: g,
+        data: labels.map(l => groupData[g]?.[l] ?? 0),
+        backgroundColor: COLORS[i % COLORS.length],
+        borderRadius: 4,
+      }))
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+      scales: { x: { stacked: false }, y: { ticks: { callback: v => (v/10000).toFixed(0)+"万円" } } } }
+  });
+}
+
+makeGroupedChart("chart-b", DATA.years, kubuns, DATA.kubunYearTotals);
+
+function makeTable(tableId, rowKeys, colKeys, dataObj, rowLabel) {
+  const table = document.getElementById(tableId);
+  let html = "<thead><tr><th>"+rowLabel+"</th>"+colKeys.map(c=>"<th>"+c+"</th>").join("")+"<th>合計</th></tr></thead><tbody>";
+  const colTotals = {};
+  rowKeys.forEach(r => {
+    let rowTotal = 0;
+    html += "<tr><td>"+r+"</td>";
+    colKeys.forEach(c => {
+      const v = dataObj[r]?.[c] ?? 0;
+      rowTotal += v;
+      colTotals[c] = (colTotals[c]??0)+v;
+      html += "<td>"+(v>0?fmt(v):"-")+"</td>";
+    });
+    html += "<td>"+fmt(rowTotal)+"</td></tr>";
+  });
+  const grandTotal = Object.values(colTotals).reduce((a,b)=>a+b,0);
+  html += "<tr><td>合計</td>"+colKeys.map(c=>"<td>"+fmt(colTotals[c]??0)+"</td>").join("")+"<td>"+fmt(grandTotal)+"</td></tr>";
+  html += "</tbody>";
+  table.innerHTML = html;
+}
+
+makeTable("table-b", kubuns, DATA.years, DATA.kubunYearTotals, "会計区分");
+
+// C: 種別×年度
+const shubetsus = Object.keys(DATA.shubetsuYearTotals);
+makeGroupedChart("chart-c", DATA.years, shubetsus, DATA.shubetsuYearTotals);
+makeTable("table-c", shubetsus, DATA.years, DATA.shubetsuYearTotals, "種別");
+
+// D: 月別推移
+new Chart(document.getElementById("chart-d"), {
+  type: "line",
+  data: {
+    labels: DATA.months,
+    datasets: DATA.years.map((y, i) => ({
+      label: y,
+      data: DATA.months.map(m => DATA.monthYearTotals[m]?.[y] ?? 0),
+      borderColor: COLORS[i],
+      backgroundColor: COLORS[i]+"33",
+      tension: 0.3,
+      fill: false,
+      pointRadius: 4,
+    }))
+  },
+  options: { responsive: true, maintainAspectRatio: false,
+    scales: { y: { ticks: { callback: v => (v/10000).toFixed(0)+"万円" } } } }
+});
+
+const monthTableData = {};
+DATA.months.forEach(m => {
+  monthTableData[m] = {};
+  DATA.years.forEach(y => { monthTableData[m][y] = DATA.monthYearTotals[m]?.[y] ?? 0; });
+});
+makeTable("table-d", DATA.months, DATA.years, monthTableData, "月");
+</script>
+</body>
+</html>
